@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { getRecordPage, type RecognitionRecord } from '@/api/record'
+import { mediaUrl } from '@/utils/media'
 
 const loading = ref(false)
 const list = ref<RecognitionRecord[]>([])
@@ -63,7 +64,7 @@ onMounted(load)
     <el-table v-loading="loading" :data="list" stripe>
       <el-table-column label="图片" width="90">
         <template #default="{ row }">
-          <el-image v-if="row.imageUrl" :src="row.imageUrl" fit="cover" style="width: 48px; height: 48px; border-radius: 6px" />
+          <el-image v-if="row.imageUrl" :src="mediaUrl(row.imageUrl)" fit="cover" style="width: 48px; height: 48px; border-radius: 6px" />
         </template>
       </el-table-column>
       <el-table-column prop="recordId" label="记录号" width="200" />

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { getSamplePage, type DatasetSample } from '@/api/sample'
+import { mediaUrl } from '@/utils/media'
 
 const loading = ref(false)
 const list = ref<DatasetSample[]>([])
@@ -60,7 +61,7 @@ onMounted(load)
       <el-table-column prop="id" label="ID" width="80" />
       <el-table-column label="图片" width="90">
         <template #default="{ row }">
-          <el-image v-if="row.imageUrl" :src="row.imageUrl" fit="cover" style="width: 48px; height: 48px; border-radius: 6px" />
+          <el-image v-if="row.imageUrl" :src="mediaUrl(row.imageUrl)" fit="cover" style="width: 48px; height: 48px; border-radius: 6px" />
         </template>
       </el-table-column>
       <el-table-column prop="herbId" label="药材 ID" width="100" />

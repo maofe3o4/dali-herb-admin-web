@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { deleteHerb, getHerbPage, publishHerb, type Herb } from '@/api/herb'
+import { mediaUrl } from '@/utils/media'
 import HerbFormDialog from './components/HerbFormDialog.vue'
 
 const loading = ref(false)
@@ -91,7 +92,7 @@ onMounted(load)
           <template #default="{ row }">
             <el-image
               v-if="row.coverImageUrl"
-              :src="row.coverImageUrl"
+              :src="mediaUrl(row.coverImageUrl)"
               fit="cover"
               style="width: 46px; height: 46px; border-radius: 6px"
             />

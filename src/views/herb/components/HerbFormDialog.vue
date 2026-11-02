@@ -5,6 +5,7 @@ import { Delete, Plus } from '@element-plus/icons-vue'
 import { getCategories, type Category } from '@/api/category'
 import { getHerbDetail, getHerbPage, saveHerb, updateHerb, type Herb, type Lookalike } from '@/api/herb'
 import { uploadFile } from '@/api/upload'
+import { mediaUrl } from '@/utils/media'
 
 const props = defineProps<{
   modelValue: boolean
@@ -320,7 +321,7 @@ onMounted(loadOptions)
               :http-request="handleUpload"
               accept="image/*"
             >
-              <img v-if="form.coverImageUrl" :src="form.coverImageUrl" class="cover-image" alt="封面图" />
+              <img v-if="form.coverImageUrl" :src="mediaUrl(form.coverImageUrl)" class="cover-image" alt="封面图" />
               <el-icon v-else class="cover-uploader-icon"><Plus /></el-icon>
             </el-upload>
           </el-form-item>

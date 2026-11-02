@@ -10,8 +10,20 @@ export interface ApiResponse<T = unknown> {
 
 const TOKEN_KEY = 'dali_herb_admin_token'
 
+// 接口基础地址
+// ------------------------------------------------------------------
+// 默认走**同源相对路径** `/api/v1`，由各环境自行转发：
+//   · 开发（vite dev）  -> vite.config.ts 的 server.proxy 转发到 http://127.0.0.1:8080
+//   · 生产（Vercel）    -> vercel.json 的 rewrites 转发到 http://203.195.180.247:8080
+//
+// ⚠️ 不要把服务器 IP 直接写在这里。Vercel 是 HTTPS，浏览器会以
+//    "Mixed Content（混合内容）" 拦截 http:// 的接口请求，页面直接白屏报错。
+//    走同源相对路径 + 平台侧代理，既避开混合内容，也顺带绕开跨域预检。
+//
+// 如需临时指向别处（例如本地直连线上后端调试），在 .env.local 里设：
+//   VITE_API_BASE_URL=http://203.195.180.247:8080/api/v1
 const service = axios.create({
-  baseURL: '/api/v1',
+  baseURL: import.meta.env.VITE_API_BASE_URL || '/api/v1',
   timeout: 20000,
 })
 

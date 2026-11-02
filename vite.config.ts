@@ -13,13 +13,18 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        // 【契约修复】原目标 http://127.0.0.1:8080 在本联调环境没有任何进程监听
-        // （Node 与 PowerShell 均 ECONNREFUSED），/api/v1 全部请求都会打不通。
-        // 后端当前实例由架构师以 --server.port=8081 启动，故指向 8081。
-        // 注意：server.proxy 仅对 `vite dev` 生效，`vite build` 产物不含代理配置，
-        // 因此生产环境仍由反向代理（Nginx 等）按 /api/v1 转发，本次改动不影响生产可用性。
+        // 本地开发转发到本机后端（Spring Boot :8080，context-path /api/v1）。
+        // 注意：server.proxy 仅对 `vite dev` 生效，`vite build` 产物不含代理配置；
+        // 生产环境由 vercel.json 的 rewrites 承担同样的转发职责。
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,
+      },
+      '/qiniu': {
+        // 七牛图库图片。线上由 vercel.json 的 /qiniu rewrite 转发；
+        // dev 下走这里，保证图片地址归一化后本地也能正常显示。
+        target: 'http://tns15ev3b.hn-bkt.clouddn.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/qiniu/, ''),
       },
     },
   },
