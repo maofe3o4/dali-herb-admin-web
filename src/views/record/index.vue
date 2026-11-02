@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { getRecordPage, type RecognitionRecord } from '@/api/record'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { deleteRecord, getRecordPage, type RecognitionRecord } from '@/api/record'
 import { mediaUrl } from '@/utils/media'
 
 const loading = ref(false)
@@ -48,6 +49,19 @@ function search() {
   load()
 }
 
+async function handleDelete(row: RecognitionRecord) {
+  await ElMessageBox.confirm(`确认删除识别记录「${row.recordId}」？删除后该记录的原图也会一并清理。`, '提示', {
+    type: 'warning',
+  })
+  await deleteRecord(row.recordId)
+  ElMessage.success('删除成功')
+  // 删掉本页最后一条时回退一页，避免停留在空页
+  if (list.value.length === 1 && query.page > 1) {
+    query.page -= 1
+  }
+  load()
+}
+
 onMounted(load)
 </script>
 
@@ -82,6 +96,11 @@ onMounted(load)
       <el-table-column prop="modelVersion" label="模型版本" width="130" />
       <el-table-column prop="costMs" label="耗时(ms)" width="100" />
       <el-table-column prop="createdAt" label="识别时间" width="180" />
+      <el-table-column label="操作" width="80" fixed="right">
+        <template #default="{ row }">
+          <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+        </template>
+      </el-table-column>
     </el-table>
 
     <el-pagination
