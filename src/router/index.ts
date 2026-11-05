@@ -91,4 +91,37 @@ router.beforeEach((to) => {
   return true
 })
 
+/* ------------------------------------------------------------------
+ * 发版后 chunk 加载失败的自愈
+ * ------------------------------------------------------------------
+ * 打包后每个页面是独立的 chunk，文件名带内容 hash，发版即变。
+ * 用户如果在发版前打开过页面，浏览器里还留着旧的入口 chunk，
+ * 点进没访问过的页面时会去加载「旧 hash 的 chunk」。Vercel 的 SPA 兜底
+ * rewrite 会把不存在的静态文件回退成 index.html，浏览器于是报
+ *   Failed to load module script: ... MIME type of "text/html"
+ * 页面就白屏。
+ * 这里统一兜底：捕获到这类 chunk 加载失败时刷新一次，让用户无感
+ * 切到新版本；用 sessionStorage 限制频率，避免刷新死循环。
+ * ------------------------------------------------------------------ */
+const CHUNK_RELOAD_KEY = 'dali_herb_chunk_reload_at'
+
+function reloadForChunkError() {
+  const last = Number(sessionStorage.getItem(CHUNK_RELOAD_KEY) || 0)
+  if (Date.now() - last < 60_000) return
+  sessionStorage.setItem(CHUNK_RELOAD_KEY, String(Date.now()))
+  window.location.reload()
+}
+
+window.addEventListener('vite:preloadError', (event) => {
+  event.preventDefault()
+  reloadForChunkError()
+})
+
+router.onError((error) => {
+  const message = error instanceof Error ? error.message : String(error)
+  if (/Failed to fetch dynamically imported module|Importing a module script failed|MIME type/i.test(message)) {
+    reloadForChunkError()
+  }
+})
+
 export default router
