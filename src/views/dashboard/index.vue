@@ -38,6 +38,49 @@ const topHerbRef = ref<HTMLDivElement>()
 const modelUsageRef = ref<HTMLDivElement>()
 
 const charts: echarts.ECharts[] = []
+/** 趋势图单独持有实例：它需要按日期范围反复 setOption(notMerge) 重播动画 */
+let trendChart: echarts.ECharts | null = null
+
+/* ---------------- 识别趋势（可选日期范围） ---------------- */
+const trendDays = ref<Array<{ date: string; label: string; count: number }>>([])
+const trendLoading = ref(false)
+const trendRange = ref<string[]>(defaultRange(7))
+const trendPreset = ref(7)
+const presetOptions = [
+  { label: '近 7 天', days: 7 },
+  { label: '近 14 天', days: 14 },
+  { label: '近 30 天', days: 30 },
+]
+const trendTotal = computed(() => trendDays.value.reduce((sum, d) => sum + d.count, 0))
+const trendAvg = computed(() => (trendDays.value.length ? trendTotal.value / trendDays.value.length : 0))
+const trendRangeLabel = computed(() => `${trendRange.value[0] ?? ''} ~ ${trendRange.value[1] ?? ''}`)
+
+function pad2(n: number) {
+  return n < 10 ? '0' + n : String(n)
+}
+function fmtDate(d: Date) {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
+function defaultRange(days: number): string[] {
+  const end = new Date()
+  const start = new Date()
+  start.setDate(end.getDate() - days + 1)
+  return [fmtDate(start), fmtDate(end)]
+}
+function enumerateDays(start: string, end: string): string[] {
+  const out: string[] = []
+  const s = new Date(`${start}T00:00:00`)
+  const e = new Date(`${end}T00:00:00`)
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return out
+  const cur = new Date(s)
+  let guard = 0
+  while (cur <= e && guard < 400) {
+    out.push(fmtDate(cur))
+    cur.setDate(cur.getDate() + 1)
+    guard += 1
+  }
+  return out
+}
 
 const PALETTE = {
   green: '#0C6B4F',
@@ -210,12 +253,20 @@ function mountChart(el: HTMLDivElement | undefined, option: echarts.EChartsOptio
 }
 
 function renderTrend() {
-  const days = overview.value?.last7Days ?? []
-  const counts = days.map((d) => Number(d.count ?? 0))
-  const avg = counts.length ? counts.reduce((a, b) => a + b, 0) / counts.length : 0
-  mountChart(trendRef.value, {
+  const el = trendRef.value
+  if (!el) return
+  const labels = trendDays.value.map((d) => d.label)
+  const values = trendDays.value.map((d) => d.count)
+  const rotate = labels.length > 14 ? 38 : 0
+  const option: echarts.EChartsOption = {
+    /* 动效：柱子自下而上长出来，且按日期依次错峰 */
+    animation: true,
+    animationDuration: 620,
+    animationEasing: 'cubicOut',
+    animationDelay: (idx: number) => idx * 24,
     tooltip: {
       trigger: 'axis',
+      axisPointer: { type: 'shadow' },
       backgroundColor: 'rgba(15,26,22,.92)',
       borderWidth: 0,
       textStyle: { color: '#fff', fontSize: 12 },
@@ -226,14 +277,19 @@ function renderTrend() {
         return `${row.axisValue}<br/>识别 <b>${row.value}</b> 次`
       },
     },
-    grid: { left: 44, right: 18, top: 24, bottom: 28 },
+    grid: { left: 44, right: 16, top: 26, bottom: rotate ? 54 : 30 },
     xAxis: {
       type: 'category',
-      data: days.map((d) => d.date),
-      boundaryGap: false,
+      data: labels,
       axisLine: { lineStyle: { color: PALETTE.hairline } },
       axisTick: { show: false },
-      axisLabel: { color: PALETTE.muted, fontSize: 11 },
+      axisLabel: {
+        color: PALETTE.muted,
+        fontSize: 11,
+        rotate,
+        hideOverlap: true,
+        interval: labels.length > 20 ? 2 : 0,
+      },
     },
     yAxis: {
       type: 'value',
@@ -244,29 +300,75 @@ function renderTrend() {
     series: [
       {
         name: '识别次数',
-        type: 'line',
-        smooth: true,
-        symbol: 'circle',
-        symbolSize: 7,
-        data: counts,
-        lineStyle: { color: PALETTE.green, width: 2.5 },
-        itemStyle: { color: PALETTE.green, borderColor: '#fff', borderWidth: 2 },
-        areaStyle: {
+        type: 'bar',
+        data: values,
+        barMaxWidth: 26,
+        itemStyle: {
+          borderRadius: [6, 6, 0, 0],
           color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(18,163,121,.28)' },
-            { offset: 1, color: 'rgba(18,163,121,.02)' },
+            { offset: 0, color: '#17B98A' },
+            { offset: 1, color: PALETTE.green },
           ]),
         },
-        markLine: {
-          silent: true,
-          symbol: 'none',
-          label: { show: false },
-          lineStyle: { color: PALETTE.blue, type: 'dashed', width: 1 },
-          data: [{ yAxis: Number(avg.toFixed(2)) }],
-        },
+        emphasis: { itemStyle: { color: PALETTE.greenBright } },
       },
     ],
-  })
+  }
+  if (!trendChart) trendChart = echarts.init(el)
+  // notMerge=true：换日期范围时用新数据重放动画
+  trendChart.setOption(option, true)
+  trendChart.resize()
+}
+
+/** 拉取所选日期范围的记录并按天聚合（后端单页上限 100，最多翻 10 页） */
+async function loadTrend() {
+  const start = trendRange.value[0] || ''
+  const end = trendRange.value[1] || ''
+  const days = enumerateDays(start, end)
+  const counts = new Map<string, number>(days.map((d) => [d, 0]))
+  trendLoading.value = true
+  try {
+    const pageSize = 100
+    let page = 1
+    let fetched = 0
+    let total = 0
+    do {
+      const res = await getRecordPage({
+        page,
+        pageSize,
+        startTime: `${start}T00:00:00`,
+        endTime: `${end}T23:59:59`,
+      })
+      total = res.total
+      const list = res.list || []
+      for (const r of list) {
+        const day = (r.createdAt || '').slice(0, 10)
+        if (counts.has(day)) counts.set(day, (counts.get(day) || 0) + 1)
+      }
+      fetched += list.length
+      page += 1
+    } while (fetched < total && page <= 10 && fetched > 0)
+    trendDays.value = days.map((d) => ({ date: d, label: d.slice(5), count: counts.get(d) || 0 }))
+  } catch (e) {
+    trendDays.value = days.map((d) => ({ date: d, label: d.slice(5), count: 0 }))
+  } finally {
+    trendLoading.value = false
+    await nextTick()
+    renderTrend()
+  }
+}
+
+function onPresetChange(days: number) {
+  trendPreset.value = days
+  trendRange.value = defaultRange(days)
+  loadTrend()
+}
+
+function onRangeChange(value: string[] | null) {
+  if (!value || !value[0] || !value[1]) return
+  trendPreset.value = 0
+  trendRange.value = [value[0], value[1]]
+  loadTrend()
 }
 
 function renderStatus() {
@@ -429,7 +531,6 @@ function renderModelUsage() {
 function renderCharts() {
   clearCharts()
   if (!overview.value) return
-  renderTrend()
   if (statusTotal.value > 0) renderStatus()
   if (levelBands.value.some((b) => b.value > 0)) renderConfidence()
   if (topHerbs.value.length) renderTopHerbs()
@@ -438,6 +539,7 @@ function renderCharts() {
 
 function handleResize() {
   charts.forEach((c) => c.resize())
+  trendChart?.resize()
 }
 
 /* 侧边栏收起/展开会让内容区变宽，但不会触发 window.resize，
@@ -448,6 +550,7 @@ function setupResizeObserver() {
   resizeObserver?.disconnect()
   resizeObserver = new ResizeObserver(() => {
     charts.forEach((c) => c.resize())
+    trendChart?.resize()
   })
   resizeObserver.observe(rootRef.value)
 }
@@ -491,8 +594,15 @@ function goRecords() {
   router.push('/records')
 }
 
+/** 刷新按钮：总览与趋势一起重拉 */
+function refreshAll() {
+  loadAll()
+  loadTrend()
+}
+
 onMounted(() => {
   loadAll()
+  loadTrend()
   setupResizeObserver()
   window.addEventListener('resize', handleResize)
 })
@@ -501,6 +611,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
   resizeObserver?.disconnect()
   resizeObserver = null
+  trendChart?.dispose()
+  trendChart = null
   clearCharts()
 })
 </script>
@@ -516,7 +628,7 @@ onBeforeUnmount(() => {
       </div>
       <div class="head-side">
         <span class="updated">{{ updatedAt ? '更新于 ' + updatedAt : '加载中…' }}</span>
-        <el-button :icon="Refresh" :loading="loading" @click="loadAll">刷新</el-button>
+        <el-button :icon="Refresh" :loading="loading" @click="refreshAll">刷新</el-button>
       </div>
     </div>
 
@@ -553,12 +665,37 @@ onBeforeUnmount(() => {
       <section class="panel">
         <header class="panel-head">
           <div>
-            <div class="panel-title">近 7 天识别趋势</div>
-            <div class="panel-hint">虚线为日均值</div>
+            <div class="panel-title">识别趋势</div>
+            <div class="panel-hint">
+              {{ trendRangeLabel }} · 共 {{ trendTotal }} 条 · 日均 {{ trendAvg.toFixed(1) }} 条
+            </div>
           </div>
-          <span class="panel-badge">{{ recordTotal }} 条累计</span>
+          <div class="trend-controls">
+            <el-radio-group v-model="trendPreset" size="small" @change="onPresetChange">
+              <el-radio-button v-for="p in presetOptions" :key="p.days" :value="p.days">{{ p.label }}</el-radio-button>
+            </el-radio-group>
+            <el-date-picker
+              v-model="trendRange"
+              class="trend-picker"
+              type="daterange"
+              size="small"
+              value-format="YYYY-MM-DD"
+              range-separator="至"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              :clearable="false"
+              @change="onRangeChange"
+            />
+          </div>
         </header>
-        <div ref="trendRef" class="chart chart-trend"></div>
+        <div v-loading="trendLoading" class="chart-wrap">
+          <div v-show="trendTotal > 0" ref="trendRef" class="chart chart-trend"></div>
+          <el-empty
+            v-if="!trendLoading && trendTotal === 0"
+            description="所选时间段没有识别记录"
+            :image-size="64"
+          />
+        </div>
       </section>
 
       <section class="panel">
@@ -847,6 +984,22 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   padding: 2px 8px;
   white-space: nowrap;
+}
+
+/* 识别趋势的日期范围控件 */
+.trend-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.trend-picker {
+  width: 236px;
+}
+.chart-wrap {
+  position: relative;
+  min-height: 268px;
 }
 
 /* 布局 */
