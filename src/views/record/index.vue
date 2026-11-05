@@ -33,6 +33,16 @@ function statusType(status?: string) {
   return 'danger'
 }
 
+/**
+ * 置信度百分比展示。
+ * 后端 RecordService.toVO 里写的是 confidence * 100（没四舍五入），
+ * 0.8562 会被序列化成 85.61999999999999，直接拼 '%' 会很难看，这里统一保留一位小数。
+ */
+function percentText(value?: number | null) {
+  if (value == null || Number.isNaN(Number(value))) return '-'
+  return Number(value).toFixed(1) + '%'
+}
+
 async function load() {
   loading.value = true
   try {
@@ -86,7 +96,7 @@ onMounted(load)
         <template #default="{ row }">{{ row.top?.name || '-' }}</template>
       </el-table-column>
       <el-table-column label="置信度" width="110">
-        <template #default="{ row }">{{ row.top?.percent != null ? row.top.percent + '%' : '-' }}</template>
+        <template #default="{ row }">{{ percentText(row.top?.percent) }}</template>
       </el-table-column>
       <el-table-column label="状态" width="100">
         <template #default="{ row }">
