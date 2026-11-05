@@ -252,18 +252,39 @@ function mountChart(el: HTMLDivElement | undefined, option: echarts.EChartsOptio
   charts.push(chart)
 }
 
+/** 趋势柱配色：柱子越高颜色越深，且每根柱子再叠加「下浅上深」的纵向渐变 */
+function trendBarColor(value: number, max: number) {
+  const ratio = max > 0 ? Math.min(1, value / max) : 0
+  // 0.72 次幂：低值区间也能拉开深浅差距，避免只有最高的一根明显变深
+  const t = Math.pow(ratio, 0.72)
+  const topLow: [number, number, number] = [0x4c, 0xc9, 0xa1]
+  const topHigh: [number, number, number] = [0x08, 0x45, 0x31]
+  const bottomLow: [number, number, number] = [0xcf, 0xf2, 0xe3]
+  const bottomHigh: [number, number, number] = [0x12, 0x8f, 0x65]
+  const mix = (a: [number, number, number], b: [number, number, number]) => {
+    const ch = (i: number) => Math.round(a[i] + (b[i] - a[i]) * t)
+    return `rgb(${ch(0)}, ${ch(1)}, ${ch(2)})`
+  }
+  return new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+    { offset: 0, color: mix(topLow, topHigh) },
+    { offset: 1, color: mix(bottomLow, bottomHigh) },
+  ])
+}
+
 function renderTrend() {
   const el = trendRef.value
   if (!el) return
   const labels = trendDays.value.map((d) => d.label)
   const values = trendDays.value.map((d) => d.count)
+  const maxValue = Math.max(1, ...values)
   const rotate = labels.length > 14 ? 38 : 0
   const option: echarts.EChartsOption = {
-    /* 动效：柱子自下而上长出来，且按日期依次错峰 */
+    /* 动效：柱子从 x 轴向上长出来，并按日期依次错峰 */
     animation: true,
-    animationDuration: 620,
+    animationDuration: 900,
     animationEasing: 'cubicOut',
-    animationDelay: (idx: number) => idx * 24,
+    animationDurationUpdate: 420,
+    animationEasingUpdate: 'cubicOut',
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
@@ -301,23 +322,41 @@ function renderTrend() {
       {
         name: '识别次数',
         type: 'bar',
-        data: values,
         barMaxWidth: 26,
-        itemStyle: {
-          borderRadius: [6, 6, 0, 0],
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: '#17B98A' },
-            { offset: 1, color: PALETTE.green },
-          ]),
+        // 逐根设置颜色：数值越大越深
+        data: values.map((value) => ({
+          value,
+          itemStyle: {
+            color: trendBarColor(value, maxValue),
+            borderRadius: [7, 7, 0, 0],
+          },
+        })),
+        // 生长动效按日期错峰：第 i 根晚 32ms 起步（封顶 480ms，避免 30 天区间等太久）
+        animation: true,
+        animationDuration: 900,
+        animationEasing: 'cubicOut',
+        animationDelay: (idx: number) => Math.min(idx * 32, 480),
+        emphasis: {
+          itemStyle: {
+            shadowBlur: 10,
+            shadowColor: 'rgba(12, 107, 79, 0.28)',
+            shadowOffsetY: -2,
+          },
         },
-        emphasis: { itemStyle: { color: PALETTE.greenBright } },
+        showBackground: true,
+        backgroundStyle: { color: '#F3F7F4', borderRadius: [7, 7, 0, 0] },
       },
     ],
   }
+  // 首次渲染时面板可能还是 v-show 隐藏状态（宽高为 0），先销毁重建，保证尺寸与动画正常
+  if (trendChart && (el.clientWidth === 0 || el.clientHeight === 0)) {
+    trendChart.dispose()
+    trendChart = null
+  }
   if (!trendChart) trendChart = echarts.init(el)
-  // notMerge=true：换日期范围时用新数据重放动画
-  trendChart.setOption(option, true)
   trendChart.resize()
+  // notMerge=true：换日期范围时用新数据重放"向上生长"动画
+  trendChart.setOption(option, true)
 }
 
 /** 拉取所选日期范围的记录并按天聚合（后端单页上限 100，最多翻 10 页） */
@@ -667,7 +706,7 @@ onBeforeUnmount(() => {
           <div>
             <div class="panel-title">识别趋势</div>
             <div class="panel-hint">
-              {{ trendRangeLabel }} · 共 {{ trendTotal }} 条 · 日均 {{ trendAvg.toFixed(1) }} 条
+              {{ trendRangeLabel }} · 共 {{ trendTotal }} 条 · 日均 {{ trendAvg.toFixed(1) }} 条 · 柱越高、颜色越深 = 次数越多
             </div>
           </div>
           <div class="trend-controls">
