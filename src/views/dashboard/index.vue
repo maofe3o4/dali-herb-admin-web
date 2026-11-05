@@ -252,15 +252,25 @@ function mountChart(el: HTMLDivElement | undefined, option: echarts.EChartsOptio
   charts.push(chart)
 }
 
-/** 趋势柱配色：柱子越高颜色越深，且每根柱子再叠加「下浅上深」的纵向渐变 */
-function trendBarColor(value: number, max: number) {
-  const ratio = max > 0 ? Math.min(1, value / max) : 0
-  // 0.72 次幂：低值区间也能拉开深浅差距，避免只有最高的一根明显变深
-  const t = Math.pow(ratio, 0.72)
-  const topLow: [number, number, number] = [0x4c, 0xc9, 0xa1]
-  const topHigh: [number, number, number] = [0x08, 0x45, 0x31]
-  const bottomLow: [number, number, number] = [0xcf, 0xf2, 0xe3]
-  const bottomHigh: [number, number, number] = [0x12, 0x8f, 0x65]
+/**
+ * 趋势柱配色：柱子越高颜色越深。
+ * 用「非零最小值 ~ 最大值」做归一化（而不是 0~max），这样 7 天视图里 6 次 vs 11 次
+ * 的柱子深浅差距明显，不会整排看起来一个颜色；每根柱子再叠加「下浅上深」的纵向渐变。
+ */
+function trendBarColor(value: number, minValue: number, maxValue: number) {
+  if (value <= 0) {
+    return new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+      { offset: 0, color: '#c4e9d9' },
+      { offset: 1, color: '#e9f8f1' },
+    ])
+  }
+  const span = Math.max(1, maxValue - minValue)
+  // 最矮的柱子也保留一档中等绿（t=0.22），最高的给到近墨绿
+  const t = 0.22 + 0.78 * Math.min(1, (value - minValue) / span)
+  const topLow: [number, number, number] = [0x7a, 0xd9, 0xb4]
+  const topHigh: [number, number, number] = [0x04, 0x2e, 0x22]
+  const bottomLow: [number, number, number] = [0xc9, 0xef, 0xdf]
+  const bottomHigh: [number, number, number] = [0x0b, 0x6a, 0x4c]
   const mix = (a: [number, number, number], b: [number, number, number]) => {
     const ch = (i: number) => Math.round(a[i] + (b[i] - a[i]) * t)
     return `rgb(${ch(0)}, ${ch(1)}, ${ch(2)})`
@@ -271,11 +281,13 @@ function trendBarColor(value: number, max: number) {
   ])
 }
 
-function renderTrend() {
+function renderTrend(replay = false) {
   const el = trendRef.value
   if (!el) return
   const labels = trendDays.value.map((d) => d.label)
   const values = trendDays.value.map((d) => d.count)
+  const positives = values.filter((v) => v > 0)
+  const minValue = positives.length ? Math.min(...positives) : 0
   const maxValue = Math.max(1, ...values)
   const rotate = labels.length > 14 ? 38 : 0
   const option: echarts.EChartsOption = {
@@ -298,7 +310,7 @@ function renderTrend() {
         return `${row.axisValue}<br/>识别 <b>${row.value}</b> 次`
       },
     },
-    grid: { left: 44, right: 16, top: 26, bottom: rotate ? 54 : 30 },
+    grid: { left: 44, right: 16, top: 30, bottom: rotate ? 54 : 30 },
     xAxis: {
       type: 'category',
       data: labels,
@@ -322,12 +334,12 @@ function renderTrend() {
       {
         name: '识别次数',
         type: 'bar',
-        barMaxWidth: 26,
+        barMaxWidth: 28,
         // 逐根设置颜色：数值越大越深
         data: values.map((value) => ({
           value,
           itemStyle: {
-            color: trendBarColor(value, maxValue),
+            color: trendBarColor(value, minValue, maxValue),
             borderRadius: [7, 7, 0, 0],
           },
         })),
@@ -335,7 +347,17 @@ function renderTrend() {
         animation: true,
         animationDuration: 900,
         animationEasing: 'cubicOut',
-        animationDelay: (idx: number) => Math.min(idx * 32, 480),
+        animationDelay: (idx: number) => Math.min(idx * 40, 480),
+        // 7/14 天柱子上标出次数，演示时一眼能读数；30 天不标避免拥挤
+        label: {
+          show: labels.length <= 14,
+          position: 'top',
+          distance: 6,
+          color: PALETTE.muted,
+          fontSize: 11,
+          fontWeight: 600,
+          formatter: '{c}',
+        },
         emphasis: {
           itemStyle: {
             shadowBlur: 10,
@@ -355,8 +377,21 @@ function renderTrend() {
   }
   if (!trendChart) trendChart = echarts.init(el)
   trendChart.resize()
-  // notMerge=true：换日期范围时用新数据重放"向上生长"动画
+  if (replay) {
+    // 先清空再 setOption：无论首次加载还是切换范围，都从头播放「向上生长」动画
+    trendChart.clear()
+  }
   trendChart.setOption(option, true)
+}
+
+/** 等面板完成布局后再渲染，避免首次加载时动画在页面绘制前就跑完（用户看不到动效） */
+let trendRenderTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleTrendRender(delay = 160) {
+  if (trendRenderTimer) clearTimeout(trendRenderTimer)
+  trendRenderTimer = setTimeout(() => {
+    trendRenderTimer = null
+    renderTrend(true)
+  }, delay)
 }
 
 /** 拉取所选日期范围的记录并按天聚合（后端单页上限 100，最多翻 10 页） */
@@ -393,7 +428,7 @@ async function loadTrend() {
   } finally {
     trendLoading.value = false
     await nextTick()
-    renderTrend()
+    scheduleTrendRender()
   }
 }
 
@@ -648,6 +683,10 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
+  if (trendRenderTimer) {
+    clearTimeout(trendRenderTimer)
+    trendRenderTimer = null
+  }
   resizeObserver?.disconnect()
   resizeObserver = null
   trendChart?.dispose()
