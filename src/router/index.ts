@@ -49,10 +49,16 @@ const routes: RouteRecordRaw[] = [
         meta: { title: '模型版本' },
       },
       {
+        path: 'dataset',
+        name: 'Dataset',
+        component: () => import('@/views/dataset/index.vue'),
+        meta: { title: '数据集' },
+      },
+      {
         path: 'samples',
         name: 'Samples',
         component: () => import('@/views/sample/index.vue'),
-        meta: { title: '数据集样本' },
+        meta: { title: '样本管理' },
       },
       {
         path: 'logs',

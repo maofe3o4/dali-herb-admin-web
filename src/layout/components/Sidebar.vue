@@ -5,6 +5,7 @@ import {
   ChatDotRound,
   Collection,
   Cpu,
+  DataAnalysis,
   DataLine,
   Document,
   Expand,
@@ -25,7 +26,8 @@ const menus = [
   { path: '/records', title: '识别记录', icon: CameraFilled },
   { path: '/feedback', title: '反馈工单', icon: ChatDotRound },
   { path: '/models', title: '模型版本', icon: Cpu },
-  { path: '/samples', title: '数据集样本', icon: Picture },
+  { path: '/dataset', title: '数据集', icon: DataAnalysis },
+  { path: '/samples', title: '样本管理', icon: Picture },
   { path: '/logs', title: '操作日志', icon: Document },
 ]
 </script>
