@@ -33,7 +33,17 @@ const menus = [
 <template>
   <div class="sidebar">
     <div class="sidebar-logo" :class="{ 'is-collapsed': collapsed }">
-      <span class="logo-mark">大</span>
+      <!-- 品牌标记：叶片（本草），展开/收起都用它，收起时只留图标 -->
+      <svg class="logo-mark" viewBox="0 0 24 24" aria-hidden="true">
+        <path
+          d="M20 4c0 8.5-5 14-12 14H5.5C5.5 10 10.5 4 20 4Z"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.7"
+          stroke-linejoin="round"
+        />
+        <path d="M5.5 18C8 13.5 11.5 9.5 16.5 6.5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+      </svg>
       <span v-if="!collapsed" class="logo-text">大理中药材</span>
     </div>
 
@@ -75,8 +85,9 @@ const menus = [
   flex: 0 0 60px;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
-  padding: 0 20px;
+  padding: 0 14px;
   color: #fff;
   font-size: 17px;
   font-weight: 600;
@@ -87,15 +98,15 @@ const menus = [
 }
 .sidebar-logo.is-collapsed {
   padding: 0;
-  justify-content: center;
 }
 .logo-mark {
-  display: none;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  color: #7fe0b8;
 }
-.sidebar-logo.is-collapsed .logo-mark {
-  display: inline;
-  font-size: 19px;
-  letter-spacing: 0;
+.logo-text {
+  overflow: hidden;
 }
 .sidebar-menu {
   flex: 1;
