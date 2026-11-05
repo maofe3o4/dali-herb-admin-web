@@ -19,6 +19,7 @@ import { mediaUrl } from '@/utils/media'
 
 const router = useRouter()
 
+const rootRef = ref<HTMLDivElement>()
 const overview = ref<StatsOverview | null>(null)
 const statusCounts = ref({ success: 0, suspected: 0, failed: 0 })
 const statusTotal = computed(
@@ -439,6 +440,18 @@ function handleResize() {
   charts.forEach((c) => c.resize())
 }
 
+/* 侧边栏收起/展开会让内容区变宽，但不会触发 window.resize，
+ * 用 ResizeObserver 盯住看板根节点，宽度一变就重排图表。 */
+let resizeObserver: ResizeObserver | null = null
+function setupResizeObserver() {
+  if (!rootRef.value || typeof ResizeObserver === 'undefined') return
+  resizeObserver?.disconnect()
+  resizeObserver = new ResizeObserver(() => {
+    charts.forEach((c) => c.resize())
+  })
+  resizeObserver.observe(rootRef.value)
+}
+
 /* ---------------- 数据加载 ---------------- */
 async function loadAll() {
   loading.value = true
@@ -480,17 +493,20 @@ function goRecords() {
 
 onMounted(() => {
   loadAll()
+  setupResizeObserver()
   window.addEventListener('resize', handleResize)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
+  resizeObserver?.disconnect()
+  resizeObserver = null
   clearCharts()
 })
 </script>
 
 <template>
-  <div v-loading="loading" class="dashboard">
+  <div ref="rootRef" v-loading="loading" class="dashboard">
     <!-- 页头 -->
     <div class="page-head">
       <div class="head-main">
