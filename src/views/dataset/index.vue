@@ -526,7 +526,7 @@ onBeforeUnmount(() => {
           <div class="panel-title">待审核样本</div>
           <div class="panel-hint">待标注 + 待审核共 {{ pendingTotal }} 条，先到先审</div>
         </div>
-        <el-button link type="primary" @click="goSamples">查看全部样本 →</el-button>
+        <el-button link type="primary" @click="goSamples">去样本管理审核 →</el-button>
       </header>
 
       <el-empty v-if="!pending.length" description="没有待审核样本" :image-size="72" />
