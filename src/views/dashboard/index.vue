@@ -706,7 +706,7 @@ onBeforeUnmount(() => {
           <div>
             <div class="panel-title">识别趋势</div>
             <div class="panel-hint">
-              {{ trendRangeLabel }} · 共 {{ trendTotal }} 条 · 日均 {{ trendAvg.toFixed(1) }} 条 · 柱越高、颜色越深 = 次数越多
+              {{ trendRangeLabel }} · 共 {{ trendTotal }} 条 · 日均 {{ trendAvg.toFixed(1) }} 条
             </div>
           </div>
           <div class="trend-controls">
